@@ -19,7 +19,7 @@
       <CDeviceClassPath>auto</CDeviceClassPath>
       <CDeviceThrottlePath>auto</CDeviceThrottlePath>
   </ContributingDeviceInfo>
-<!--
+
   <ZoneThrottleInfo>
     <ZoneID>1</ZoneID>
     <CriticalShutDown>1</CriticalShutDown>
@@ -35,7 +35,7 @@
       <CoolingDevId>1</CoolingDevId>
     </CoolingDeviceInfo>
   </ZoneThrottleInfo>
--->
+
   <ZoneThrottleInfo>
     <ZoneID>3</ZoneID>
     <CriticalShutDown>0</CriticalShutDown>

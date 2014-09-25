@@ -14,6 +14,16 @@
   </PlatformInfo>
 
   <Sensor>
+      <SensorName>SYSTHERM0</SensorName>
+<!--
+      <SensorPath>auto</SensorPath>
+      <InputTemp>temp</InputTemp>
+      <HighTemp>auto</HighTemp>
+      <LowTemp>auto</LowTemp>
+-->
+  </Sensor>
+
+  <Sensor>
       <SensorName>SYSTHERM1</SensorName>
 <!--
       <SensorPath>auto</SensorPath>
@@ -24,7 +34,7 @@
   </Sensor>
 
   <Sensor>
-      <SensorName>SYSTHERM0</SensorName>
+      <SensorName>SYSTHERM2</SensorName>
 <!--
       <SensorPath>auto</SensorPath>
       <InputTemp>temp</InputTemp>
@@ -42,7 +52,7 @@
   </Sensor>
 
   <Sensor>
-      <SensorName>Core0</SensorName>
+      <SensorName>Core 0</SensorName>
       <SensorPath>/sys/devices/platform/coretemp.0/</SensorPath>
       <InputTemp>temp2_input</InputTemp>
       <HighTemp>temp2_threshold2</HighTemp>
@@ -50,28 +60,27 @@
       <UEventDevPath>DEVPATH=/devices/platform/coretemp.0</UEventDevPath>
   </Sensor>
 
-<!--
   <Zone>
         <ZoneID>1</ZoneID>
         <ZoneName>BackSkin</ZoneName>
         <ZoneLogic>VirtualSkin</ZoneLogic>
         <SupportsUEvent>0</SupportsUEvent>
-        <DebounceInterval>2000</DebounceInterval>
+        <DebounceInterval>1000</DebounceInterval>
         <PollDelay>
                <DelayNormal>30000</DelayNormal>
-               <DelayWarning>30000</DelayWarning>
-               <DelayAlert>30000</DelayAlert>
+               <DelayWarning>10000</DelayWarning>
+               <DelayAlert>5000</DelayAlert>
         </PollDelay>
         <ZoneThreshold>
-               <ZoneThresholdNormal>47000</ZoneThresholdNormal>
-               <ZoneThresholdWarning>57000</ZoneThresholdWarning>
-               <ZoneThresholdAlert>72000</ZoneThresholdAlert>
+               <ZoneThresholdNormal>48000</ZoneThresholdNormal>
+               <ZoneThresholdWarning>50000</ZoneThresholdWarning>
+               <ZoneThresholdAlert>70000</ZoneThresholdAlert>
         </ZoneThreshold>
        <SensorAttrib>
-           <SensorName>SYSTHERM1</SensorName>
-           <Weight>680</Weight>
+           <SensorName>SYSTHERM2</SensorName>
+           <Weight>662</Weight>
        </SensorAttrib>
-       <Offset>8400</Offset>
+       <Offset>5203</Offset>
   </Zone>
 
   <Zone>
@@ -79,40 +88,39 @@
        <ZoneName>FrontSkin</ZoneName>
        <ZoneLogic>VirtualSkin</ZoneLogic>
        <SupportsUEvent>0</SupportsUEvent>
-       <DebounceInterval>2000</DebounceInterval>
-       <PollDelay>
-              <DelayNormal>30000</DelayNormal>
-              <DelayWarning>30000</DelayWarning>
-              <DelayAlert>30000</DelayAlert>
-       </PollDelay>
-       <ZoneThreshold>
-              <ZoneThresholdNormal>40000</ZoneThresholdNormal>
-              <ZoneThresholdWarning>50000</ZoneThresholdWarning>
-              <ZoneThresholdAlert>65000</ZoneThresholdAlert>
-       </ZoneThreshold>
-       <SensorAttrib>
-           <SensorName>SYSTHERM0</SensorName>
-           <Weight>710</Weight>
-       </SensorAttrib>
-       <Offset>8100</Offset>
-  </Zone>
--->
-
-  <Zone>
-       <ZoneID>3</ZoneID>
-       <ZoneName>SoC</ZoneName>
-       <ZoneLogic>Raw</ZoneLogic>
-       <SupportsUEvent>0</SupportsUEvent>
-       <DebounceInterval>2000</DebounceInterval>
+       <DebounceInterval>1000</DebounceInterval>
        <PollDelay>
               <DelayNormal>30000</DelayNormal>
               <DelayWarning>10000</DelayWarning>
               <DelayAlert>5000</DelayAlert>
        </PollDelay>
        <ZoneThreshold>
-              <ZoneThresholdNormal>80000</ZoneThresholdNormal>
-              <ZoneThresholdWarning>84000</ZoneThresholdWarning>
-              <ZoneThresholdAlert>88000</ZoneThresholdAlert>
+              <ZoneThresholdNormal>48000</ZoneThresholdNormal>
+              <ZoneThresholdWarning>50000</ZoneThresholdWarning>
+              <ZoneThresholdAlert>70000</ZoneThresholdAlert>
+       </ZoneThreshold>
+       <SensorAttrib>
+           <SensorName>SYSTHERM2</SensorName>
+           <Weight>492</Weight>
+       </SensorAttrib>
+       <Offset>7721</Offset>
+  </Zone>
+
+  <Zone>
+       <ZoneID>3</ZoneID>
+       <ZoneName>SoC</ZoneName>
+       <ZoneLogic>Raw</ZoneLogic>
+       <SupportsUEvent>0</SupportsUEvent>
+       <DebounceInterval>1000</DebounceInterval>
+       <PollDelay>
+              <DelayNormal>30000</DelayNormal>
+              <DelayWarning>10000</DelayWarning>
+              <DelayAlert>5000</DelayAlert>
+       </PollDelay>
+       <ZoneThreshold>
+              <ZoneThresholdNormal>85000</ZoneThresholdNormal>
+              <ZoneThresholdWarning>87000</ZoneThresholdWarning>
+              <ZoneThresholdAlert>89000</ZoneThresholdAlert>
        </ZoneThreshold>
        <SensorAttrib>
            <SensorName>SoC_DTS0</SensorName>
@@ -123,20 +131,20 @@
        <ZoneID>4</ZoneID>
        <ZoneName>CPU</ZoneName>
        <ZoneLogic>Raw</ZoneLogic>
-       <SupportsUEvent>0</SupportsUEvent>
-       <DebounceInterval>2000</DebounceInterval>
+       <SupportsUEvent>1</SupportsUEvent>
+       <DebounceInterval>1000</DebounceInterval>
        <PollDelay>
               <DelayNormal>30000</DelayNormal>
               <DelayWarning>10000</DelayWarning>
               <DelayAlert>5000</DelayAlert>
        </PollDelay>
        <ZoneThreshold>
-              <ZoneThresholdNormal>80000</ZoneThresholdNormal>
-              <ZoneThresholdWarning>84000</ZoneThresholdWarning>
-              <ZoneThresholdAlert>88000</ZoneThresholdAlert>
+              <ZoneThresholdNormal>85000</ZoneThresholdNormal>
+              <ZoneThresholdWarning>87000</ZoneThresholdWarning>
+              <ZoneThresholdAlert>89000</ZoneThresholdAlert>
        </ZoneThreshold>
        <SensorAttrib>
-           <SensorName>Core0</SensorName>
+           <SensorName>Core 0</SensorName>
        </SensorAttrib>
   </Zone>
  </thermalconfig>
