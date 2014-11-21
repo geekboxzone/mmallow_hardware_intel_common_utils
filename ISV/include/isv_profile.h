@@ -108,6 +108,7 @@ private:
     uint32_t getResolution(const char * name);
     void getConfigData(const char *name, const char **atts);
     void handleFilterParameter(const char *name, const char **atts);
+    void handleCommonParameter(const char *name, const char **atts);
 
     /* dump the config data */
     void dumpConfigData();
@@ -130,6 +131,12 @@ private:
 private:
     uint32_t mWidth;
     uint32_t mHeight;
+
+    /* The default value of VPP/FRC.
+     * They will be read from config xml file.
+     */
+    int32_t mDefaultVPPStatus;
+    int32_t mDefaultFRCStatus;
 
     /* the filters' status according to resolution
      * bit 0  used for ProcFilterNone

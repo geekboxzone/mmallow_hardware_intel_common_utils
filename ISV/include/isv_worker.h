@@ -37,7 +37,7 @@
  */
 #define OMX_BUFFERFLAG_TFF 0x00010000
 
-/* interlaced frame flag: This flag is set to indicate the buffer contains a
+/* interlaced frame flag: This flag is set to indicate the buffer contains a 
  * top and bottom field and display ordering is bottom field first.
  * @ingroup buf
  */
@@ -123,7 +123,7 @@ class ISVWorker : public RefBase
 
         // alloc/free VA surface
         status_t allocSurface(uint32_t* width, uint32_t* height,
-                uint32_t stride, uint32_t format, uint32_t handle, int32_t* surfaceId);
+                uint32_t stride, uint32_t format, unsigned long handle, int32_t* surfaceId);
         status_t freeSurface(int32_t* surfaceId);
 
         ISVWorker();

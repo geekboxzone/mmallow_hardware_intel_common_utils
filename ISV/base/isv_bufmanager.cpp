@@ -18,7 +18,9 @@
 #include <media/hardware/HardwareAPI.h>
 #include <system/graphics.h>
 #include "isv_bufmanager.h"
+#ifndef TARGET_VPP_USE_GEN
 #include "hal_public.h"
+#endif
 
 //#define LOG_NDEBUG 0
 #undef LOG_TAG
@@ -33,7 +35,7 @@ ISVBuffer::~ISVBuffer() {
     }
 }
 
-status_t ISVBuffer::initBufferInfo()
+status_t ISVBuffer::initBufferInfo(uint32_t hackFormat)
 {
     if (mType == ISV_BUFFER_METADATA) {
         VideoDecoderOutputMetaData *metaData =
@@ -45,7 +47,7 @@ status_t ISVBuffer::initBufferInfo()
         }
 
         if (mGrallocHandle != 0) {
-            if ((uint32_t)metaData->pHandle != mGrallocHandle) {
+            if ((unsigned long)metaData->pHandle != mGrallocHandle) {
                 if (STATUS_OK != mWorker->freeSurface(&mSurface)) {
                     ALOGE("%s: free surface %d failed.", __func__, mSurface);
                     return UNKNOWN_ERROR;
@@ -53,7 +55,7 @@ status_t ISVBuffer::initBufferInfo()
             } else
                 return OK;
         }
-        mGrallocHandle = (uint32_t)metaData->pHandle;
+        mGrallocHandle = (unsigned long)metaData->pHandle;
     } else {
         if (mSurface != -1)
             return OK;
@@ -68,7 +70,7 @@ status_t ISVBuffer::initBufferInfo()
     int err = hw_get_module(GRALLOC_HARDWARE_MODULE_ID, (hw_module_t const**)&pGralloc);
     if (!pGralloc) err = -1;
     if (0 == err)
-        err = pGralloc->perform(pGralloc, INTEL_UFO_GRALLOC_MODULE_PERFORM_GET_BO_INFO, handle, &info);
+        err = pGralloc->perform(pGralloc, INTEL_UFO_GRALLOC_MODULE_PERFORM_GET_BO_INFO, mGrallocHandle, &info);
 
     if (0 != err)
     {
@@ -81,15 +83,8 @@ status_t ISVBuffer::initBufferInfo()
 #else
     IMG_native_handle_t* grallocHandle = (IMG_native_handle_t*)mGrallocHandle;
     mStride = grallocHandle->iWidth;
-    mColorFormat = grallocHandle->iFormat;
+    mColorFormat = (hackFormat != 0) ? hackFormat : grallocHandle->iFormat;
 #endif
-
-    //FIXME: currently, VSP doesn't support YV12 format very well, so diable ISV temporarily
-    if (mColorFormat == HAL_PIXEL_FORMAT_YV12) {
-        ALOGI("%s: VSP doesn't support YV12 very well, so disable ISV", __func__);
-        return BAD_TYPE;
-    }
-
     if (mWorker == NULL) {
         ALOGE("%s: mWorker == NULL!!", __func__);
         return UNKNOWN_ERROR;
@@ -119,12 +114,12 @@ status_t ISVBufferManager::setBufferCount(int32_t size)
     return OK;
 }
 
-status_t ISVBufferManager::freeBuffer(uint32_t handle)
+status_t ISVBufferManager::freeBuffer(unsigned long handle)
 {
     Mutex::Autolock autoLock(mBufferLock);
     for (uint32_t i = 0; i < mBuffers.size(); i++) {
         ISVBuffer* isvBuffer = mBuffers.itemAt(i);
-        if (isvBuffer->getHandle() == (uint32_t)handle) {
+        if (isvBuffer->getHandle() == handle) {
             delete isvBuffer;
             mBuffers.removeAt(i);
             ALOGD_IF(ISV_BUFFER_MANAGER_DEBUG, "%s: remove handle 0x%08x, and then mBuffers.size() %d", __func__,
@@ -137,7 +132,7 @@ status_t ISVBufferManager::freeBuffer(uint32_t handle)
     return UNKNOWN_ERROR;
 }
 
-status_t ISVBufferManager::useBuffer(uint32_t handle)
+status_t ISVBufferManager::useBuffer(unsigned long handle)
 {
     Mutex::Autolock autoLock(mBufferLock);
     if (handle == 0 || mBuffers.size() >= mBuffers.capacity())
@@ -145,7 +140,7 @@ status_t ISVBufferManager::useBuffer(uint32_t handle)
 
     for (uint32_t i = 0; i < mBuffers.size(); i++) {
         ISVBuffer* isvBuffer = mBuffers.itemAt(i);
-        if (isvBuffer->getHandle() == (uint32_t)handle) {
+        if (isvBuffer->getHandle() == handle) {
             ALOGE("%s: this buffer 0x%08x has already been registered", __func__, handle);
             return UNKNOWN_ERROR;
         }
@@ -168,14 +163,14 @@ status_t ISVBufferManager::useBuffer(const sp<ANativeWindowBuffer> nativeBuffer)
 
     for (uint32_t i = 0; i < mBuffers.size(); i++) {
         ISVBuffer* isvBuffer = mBuffers.itemAt(i);
-        if (isvBuffer->getHandle() == (uint32_t)nativeBuffer->handle) {
+        if (isvBuffer->getHandle() == (unsigned long)nativeBuffer->handle) {
             ALOGE("%s: this buffer 0x%08x has already been registered", __func__, nativeBuffer->handle);
             return UNKNOWN_ERROR;
         }
     }
 
     ISVBuffer* isvBuffer = new ISVBuffer(mWorker,
-            (uint32_t)nativeBuffer->handle, (uint32_t)nativeBuffer->handle,
+            (unsigned long)nativeBuffer->handle, (unsigned long)nativeBuffer->handle,
             nativeBuffer->width, nativeBuffer->height,
             nativeBuffer->stride, nativeBuffer->format,
             mMetaDataMode ? ISVBuffer::ISV_BUFFER_METADATA : ISVBuffer::ISV_BUFFER_GRALLOC);
@@ -186,13 +181,14 @@ status_t ISVBufferManager::useBuffer(const sp<ANativeWindowBuffer> nativeBuffer)
     return OK;
 }
 
-ISVBuffer* ISVBufferManager::mapBuffer(uint32_t handle)
+ISVBuffer* ISVBufferManager::mapBuffer(unsigned long handle)
 {
     Mutex::Autolock autoLock(mBufferLock);
     for (uint32_t i = 0; i < mBuffers.size(); i++) {
         ISVBuffer* isvBuffer = mBuffers.itemAt(i);
-        if (isvBuffer->getHandle() == (uint32_t)handle)
+        if (isvBuffer->getHandle() == handle)
             return isvBuffer;
     }
     return NULL;
 }
+

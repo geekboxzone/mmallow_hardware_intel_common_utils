@@ -18,14 +18,14 @@
 #include <string.h>
 #include <stdio.h>
 #include <utils/Log.h>
-#include <cutils/properties.h>
-
 #include "isv_profile.h"
 
 #undef LOG_TAG
 #define LOG_TAG "ISVProfile"
 
 #define QCIF_AREA (176 * 144)
+
+#define DEFAULT_XML_FILE "/etc/video_isv_profile.xml"
 
 using namespace android;
 static const char StatusOn[][5] = {"1frc", "1vpp"};
@@ -39,6 +39,9 @@ ISVProfile::ISVProfile(const uint32_t width, const uint32_t height)
 
     mCurrentFilter = 0;
     mCurrentFrcTab = 0;
+    mDefaultVPPStatus = 0;
+    mDefaultFRCStatus = 0;
+
     mStatus = 0;
 
     memset(mConfigs, 0, sizeof(ISVConfig) * ProcFilterCount);
@@ -87,27 +90,13 @@ uint32_t ISVProfile::getFilterStatus()
 bool ISVProfile::isVPPOn()
 {
     int32_t status = getGlobalStatus();
-    if (status == -1) {
-        char value[PROPERTY_VALUE_MAX];
-        if (property_get("persist.intel.isv.vpp", value, NULL) &&
-                (!strcmp("1", value) || !strcasecmp("true", value))) {
-            status = VPP_COMMON_ON;
-        }
-    }
-    return (status & VPP_COMMON_ON);
+    return (status != -1) ? (((status & VPP_COMMON_ON) != 0) ? true : false) : false;
 }
 
 bool ISVProfile::isFRCOn()
 {
     int32_t status = getGlobalStatus();
-    if (status == -1) {
-        char value[PROPERTY_VALUE_MAX];
-        if (property_get("persist.intel.isv.frc", value, NULL) &&
-                (!strcmp("1", value) || !strcasecmp("true", value))) {
-            status = VPP_FRC_ON;
-        }
-    }
-    return (status & VPP_FRC_ON);
+    return (status != -1) ? (((status & VPP_FRC_ON) != 0) ? true : false) : false;
 }
 
 void ISVProfile::updateFilterStatus() {
@@ -251,7 +240,11 @@ void ISVProfile::getConfigData(const char *name, const char **atts)
             ALOGE("\"FRCRate\" element is only for ProcFilterFrameRateConversion\n");
         }
     } else if (strcmp(name, "parameter") == 0) {
+        /* <parameter /> */
         handleFilterParameter(name, atts);
+    } else if (strcmp(name, "Parameter") == 0) {
+        /* <Parameter /> */
+        handleCommonParameter(name, atts);
     } else
         ALOGE("Couldn't handle this element %s!\n", name);
 }
@@ -270,6 +263,23 @@ void ISVProfile::handleFilterParameter(const char *name, const char **atts)
         return;
     }
 
+}
+
+void ISVProfile::handleCommonParameter(const char *name, const char **atts)
+{
+    int attIndex = 0;
+
+    if (strcmp(atts[attIndex], "name") || strcmp(atts[attIndex + 2], "value")) {
+        ALOGE("\"%s\" or \"%s\" couldn't match the %s format\n", atts[attIndex], atts[attIndex + 2], name);
+        return;
+    }
+
+    /* The default status of VPP */
+    if (strcmp(atts[attIndex + 1], "DefaultVPPStatus") == 0)
+        mDefaultVPPStatus = atoi(atts[attIndex + 3]);
+    /* The default status of FRC */
+    else if (strcmp(atts[attIndex + 1], "DefaultFRCStatus") == 0)
+        mDefaultFRCStatus = atoi(atts[attIndex + 3]);
 }
 
 void ISVProfile::startElement(void *userData, const char *name, const char **atts)
@@ -293,11 +303,9 @@ void ISVProfile::getDataFromXmlFile()
     void *pBuf = NULL;
     FILE *fp = NULL;
 
-    static const char *defaultXmlFile = "/etc/video_isv_profile.xml";
-
-    fp = ::fopen(defaultXmlFile, "r");
+    fp = ::fopen(DEFAULT_XML_FILE, "r");
     if (NULL == fp) {
-        ALOGE("@%s, line:%d, couldn't open profile %s", __func__, __LINE__, defaultXmlFile);
+        ALOGE("@%s, line:%d, couldn't open profile %s", __func__, __LINE__, DEFAULT_XML_FILE);
         return;
     }
 
@@ -344,21 +352,49 @@ int32_t ISVProfile::getGlobalStatus()
     char path[80];
     int userId = 0;
     int32_t status = 0;
+    FILE *setting_handle, *config_handle;
 
     snprintf(path, 80, "/data/user/%d/com.intel.vpp/shared_prefs/vpp_settings.xml", userId);
     ALOGI("%s: %s",__func__, path);
-    FILE *handle = fopen(path, "r");
-    if(handle == NULL) {
+    setting_handle = fopen(path, "r");
+    if(setting_handle == NULL) {
         ALOGE("%s: failed to open file %s\n", __func__, path);
-        return -1;
+
+        /* Read the Filter config file to get default value */
+        config_handle = fopen(DEFAULT_XML_FILE, "r");
+        if (config_handle == NULL) {
+            ALOGE("%s: failed to open file %s\n", __func__, DEFAULT_XML_FILE);
+            return -1;
+        }
+
+        char xml_buf[MAX_BUF_SIZE + 1] = {0};
+        memset(xml_buf, 0, MAX_BUF_SIZE);
+        if (fread(xml_buf, 1, MAX_BUF_SIZE, config_handle) <= 0) {
+            ALOGE("%s: failed to read config xml file!\n", __func__);
+            fclose(config_handle);
+            return -1;
+        }
+        xml_buf[MAX_BUF_SIZE] = '\0';
+
+        if (strstr(xml_buf, "name=\"DefaultVPPStatus\" value=\"1\"") != NULL)
+            status |= VPP_COMMON_ON;
+        if (strstr(xml_buf, "name=\"DefaultFRCStatus\" value=\"1\"") != NULL)
+            status |= VPP_FRC_ON;
+
+        ALOGI("%s: using the default status: VPP=%d, FRC=%d\n", __func__,
+            ((status & VPP_COMMON_ON) == 0) ? 0 : 1,
+            ((status & VPP_FRC_ON) == 0) ? 0: 1);
+
+        fclose(config_handle);
+        return status;
     }
 
     const int MAXLEN = 1024;
     char buf[MAXLEN] = {0};
     memset(buf, 0 ,MAXLEN);
-    if(fread(buf, 1, MAXLEN, handle) <= 0) {
+    if(fread(buf, 1, MAXLEN, setting_handle) <= 0) {
         ALOGE("%s: failed to read vpp config file %d", __func__, userId);
-        fclose(handle);
+        fclose(setting_handle);
         return -1;
     }
     buf[MAXLEN - 1] = '\0';
@@ -369,7 +405,7 @@ int32_t ISVProfile::getGlobalStatus()
     if(strstr(buf, StatusOn[1]) != NULL)
         status |= VPP_COMMON_ON;
 
-    fclose(handle);
+    fclose(setting_handle);
     return status;
 }
 
@@ -408,7 +444,7 @@ void ISVProfile::dumpConfigData()
         if (mConfigs[i].paraSize) {
             ALOGI("\t\t parameters: ");
             for(j = 0; j < mConfigs[i].paraSize; j++)
-                ALOGI("%s=%f,", mConfigs[i].paraTables[j].name, mConfigs[i].paraTables[j].value);
+                ALOGE("%s=%f,", mConfigs[i].paraTables[j].name, mConfigs[i].paraTables[j].value);
             ALOGI("\n");
         }
     }
@@ -419,4 +455,9 @@ void ISVProfile::dumpConfigData()
             break;
         ALOGI("input_fps=%d, rate=%s\n", mFrcRates[i].input_fps, rateNames[mFrcRates[i].rate]);
     }
+
+    ALOGI("========== common parameter configs:===========\n");
+    ALOGI("mDefaultVPPStatus=%d\n", mDefaultVPPStatus);
+    ALOGI("mDefaultFRCStatus=%d\n", mDefaultFRCStatus);
+
 }

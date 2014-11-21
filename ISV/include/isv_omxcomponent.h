@@ -31,13 +31,15 @@
 
 #define ISV_COMPONENT_DEBUG 0
 
-#define MIN_INPUT_NUM           (6)    // forward reference frame number is 3 for merrifield/moorefield
+#ifdef TARGET_VPP_USE_GEN
+#define MIN_INPUT_NUM           (3)
+#define MIN_OUTPUT_NUM          (3)
+#else
+#define MIN_INPUT_NUM           (4)    // forward reference frame number is 3 for merrifield/moorefield
 #define MIN_OUTPUT_NUM          (10)   // 2.5FRC need hold 2 + 3 + 2 + 3= 10 buffers, without FRC we set to 6
-#define DECODE_EXTRA_NUM        (9)    //?? i don't know
-#define MIN_ISV_BUFFER_NUM      ((MIN_OUTPUT_NUM) + (MIN_INPUT_NUM) + (DECODE_EXTRA_NUM))
+#endif
+#define MIN_ISV_BUFFER_NUM      ((MIN_OUTPUT_NUM) + (MIN_INPUT_NUM))
 #define UNDEQUEUED_NUM          (4)   // display system hold 4 buffers
-
-#define SKIP_FRAME_NUM          (30)
 
 using namespace android;
 class ISVComponent;
@@ -268,11 +270,11 @@ private:
     int32_t mNumISVBuffers;
     int32_t mNumDecoderBuffers;
     int32_t mNumDecoderBuffersBak;
-    int64_t mNumBypassFrames;
     uint32_t mWidth;
     uint32_t mHeight;
     uint32_t mUseAndroidNativeBufferIndex;
     uint32_t mStoreMetaDataInBuffersIndex;
+    uint32_t mHackFormat;
 
     bool mUseAndroidNativeBuffer;
     bool mUseAndroidNativeBuffer2;

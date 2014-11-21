@@ -63,7 +63,7 @@ private:
 
 public:
     ISVBuffer(sp<ISVWorker> worker,
-            uint32_t buffer, uint32_t grallocHandle,
+            unsigned long buffer, unsigned long grallocHandle,
             uint32_t width, uint32_t height,
             uint32_t stride, uint32_t colorFormat,
             ISV_BUFFERTYPE type)
@@ -78,7 +78,7 @@ public:
         mSurface(-1) {}
 
     ISVBuffer(sp<ISVWorker> worker,
-            uint32_t buffer,
+            unsigned long buffer,
             ISV_BUFFERTYPE type)
         :mWorker(worker),
         mBuffer(buffer),
@@ -93,17 +93,18 @@ public:
     ~ISVBuffer();
 
     // init buffer info
-    status_t initBufferInfo();
+    // FIXME: hackFormat is for VP9, should be removed in future
+    status_t initBufferInfo(uint32_t hackFormat);
 
     // get va surface
-    uint32_t getSurface() { return mSurface; }
+    int32_t getSurface() { return mSurface; }
     // get buffer handle
-    uint32_t getHandle() { return mBuffer; }
+    unsigned long getHandle() { return mBuffer; }
 
 private:
     sp<ISVWorker> mWorker;
-    uint32_t mBuffer;
-    uint32_t mGrallocHandle;
+    unsigned long mBuffer;
+    unsigned long mGrallocHandle;
     uint32_t mWidth;
     uint32_t mHeight;
     uint32_t mStride;
@@ -125,11 +126,11 @@ public:
 
     // register/unregister ISVBuffers to mBuffers
     status_t useBuffer(const sp<ANativeWindowBuffer> nativeBuffer);
-    status_t useBuffer(uint32_t handle);
-    status_t freeBuffer(uint32_t handle);
+    status_t useBuffer(unsigned long handle);
+    status_t freeBuffer(unsigned long handle);
 
     // Map to ISVBuffer
-    ISVBuffer* mapBuffer(uint32_t handle);
+    ISVBuffer* mapBuffer(unsigned long handle);
     // set isv worker
     void setWorker(sp<ISVWorker> worker) { mWorker = worker; }
     void setMetaDataMode(bool metaDataMode) { mMetaDataMode = metaDataMode; }

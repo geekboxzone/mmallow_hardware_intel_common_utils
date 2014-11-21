@@ -21,6 +21,7 @@
 #include <media/hardware/HardwareAPI.h>
 #include "isv_profile.h"
 #include <OMX_IndexExt.h>
+#include <hal_public.h>
 
 //#define LOG_NDEBUG 0
 #undef LOG_TAG
@@ -59,11 +60,11 @@ ISVComponent::ISVComponent(
         mNumISVBuffers(MIN_ISV_BUFFER_NUM),
         mNumDecoderBuffers(0),
         mNumDecoderBuffersBak(0),
-        mNumBypassFrames(SKIP_FRAME_NUM),
         mWidth(0),
         mHeight(0),
         mUseAndroidNativeBufferIndex(0),
         mStoreMetaDataInBuffersIndex(0),
+        mHackFormat(0),
         mUseAndroidNativeBuffer(false),
         mUseAndroidNativeBuffer2(false),
         mVPPEnabled(false),
@@ -102,7 +103,7 @@ ISVComponent::ISVComponent(
     g_isv_components.push_back(static_cast<ISVComponent*>(this));
 
     mVPPOn = ISVProfile::isFRCOn() || ISVProfile::isVPPOn();
-    ALOGI("%s: mVPPOn=%d", __func__, mVPPOn);
+    ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: mVPPOn %d", __func__, mVPPOn);
 
     if (mISVBufferManager == NULL) {
         mISVBufferManager = new ISVBufferManager();
@@ -112,7 +113,7 @@ ISVComponent::ISVComponent(
 
 ISVComponent::~ISVComponent()
 {
-    ALOGI("%s", __func__);
+    ALOGD_IF(ISV_COMPONENT_DEBUG, "%s", __func__);
     if (mpISVCallBacks) {
         free(mpISVCallBacks);
         mpISVCallBacks = NULL;
@@ -167,7 +168,7 @@ void ISVComponent::deinit()
         if (mProcThread != NULL) {
             mProcThread->stop();
             mProcThread = NULL;
-            ALOGI("%s: delete ISV processor ", __func__);
+            ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: delete ISV processor ", __func__);
         }
     }
     pthread_mutex_unlock(&ProcThreadInstanceLock);
@@ -255,6 +256,15 @@ OMX_ERRORTYPE ISVComponent::ISV_GetParameter(
             ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: orignal bufferCountActual %d, bufferCountMin %d",  __func__, def->nBufferCountActual, def->nBufferCountMin);
             def->nBufferCountActual += mNumISVBuffers;
             def->nBufferCountMin += mNumISVBuffers;
+#ifndef TARGET_VPP_USE_GEN
+            //FIXME: THIS IS A HACK!! Request NV12 buffer for YV12 format
+            //because VSP only support NV12 output
+            OMX_VIDEO_PORTDEFINITIONTYPE *video_def = &def->format.video;
+            if (video_def->eColorFormat == VA_FOURCC_YV12) {
+                mHackFormat = HAL_PIXEL_FORMAT_YV12;
+                video_def->eColorFormat = (OMX_COLOR_FORMATTYPE)HAL_PIXEL_FORMAT_NV12_VED;
+            }
+#endif
         }
     }
 
@@ -267,7 +277,7 @@ OMX_ERRORTYPE ISVComponent::SetParameter(
     OMX_IN  OMX_PTR pComponentParameterStructure)
 {
     GET_ISVOMX_COMPONENT(hComponent);
-
+ 
     return pComp->ISV_SetParameter(nIndex, pComponentParameterStructure);
 }
 
@@ -283,6 +293,23 @@ OMX_ERRORTYPE ISVComponent::ISV_SetParameter(
         if (*def == ISV_AUTO) {
             mVPPEnabled = true;
             ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: mVPPEnabled -->true", __func__);
+#ifndef TARGET_VPP_USE_GEN
+            if (mVPPOn) {
+                uint32_t number = MIN_INPUT_NUM + MIN_OUTPUT_NUM;
+                OMX_INDEXTYPE index;
+                status_t error =
+                    OMX_GetExtensionIndex(
+                            mComponent,
+                            (OMX_STRING)"OMX.Intel.index.vppBufferNum",
+                            &index);
+                if (error == OK) {
+                    error = OMX_SetParameter(mComponent, index, (OMX_PTR)&number);
+                } else {
+                    // ingore this error
+                    ALOGW("Get vpp number index failed");
+                }
+            }
+#endif
         } else if (*def == ISV_DISABLE)
             mVPPEnabled = false;
         return OMX_ErrorNone;
@@ -314,20 +341,16 @@ OMX_ERRORTYPE ISVComponent::ISV_SetParameter(
                     ALOGE("%s: failed to set ISV buffer count, set VPPEnabled -->false", __func__);
                     mVPPEnabled = false;
                 }
-                ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: video frame width %d, height %d",  __func__,
+                ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: video frame width %d, height %d",  __func__, 
                         video_def->nFrameWidth, video_def->nFrameHeight);
             }
-#if 0
+
             if (def->nPortIndex == kPortIndexInput) {
                 OMX_VIDEO_PORTDEFINITIONTYPE *video_def = &def->format.video;
-                mFilterParam.frameRate = video_def->xFramerate;
 
-                if (mISVProfile != NULL && mFilterParam.frameRate != 0) {
-                    mFilterParam.frcRate = mISVProfile->getFRCRate(mFilterParam.frameRate);
-                }
-                ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: frame rate is set to %d",  __func__, mFilterParam.frameRate);
+                if (mProcThread != NULL)
+                    mProcThread->configFRC(video_def->xFramerate);
             }
-#endif
         }
 
         if (mUseAndroidNativeBuffer
@@ -391,18 +414,6 @@ OMX_ERRORTYPE ISVComponent::ISV_SetConfig(
     OMX_IN  OMX_PTR pComponentConfigStructure)
 {
     ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: nIndex 0x%08x", __func__, nIndex);
-
-    if (nIndex == static_cast<OMX_INDEXTYPE>(OMX_IndexConfigAutoFramerateConversion)) {
-        OMX_CONFIG_BOOLEANTYPE *config = static_cast<OMX_CONFIG_BOOLEANTYPE*>(pComponentConfigStructure);
-        if (config->bEnabled) {
-            mVPPEnabled = true;
-            ALOGI("%s: mVPPEnabled=true", __func__);
-        } else {
-            mVPPEnabled = false;
-            ALOGI("%s: mVPPEnabled=false", __func__);
-        }
-        return OMX_ErrorNone;
-    }
 
     return OMX_SetConfig(mComponent, nIndex, pComponentConfigStructure);
 }
@@ -498,7 +509,7 @@ OMX_ERRORTYPE ISVComponent::ISV_UseBuffer(
             && nPortIndex == kPortIndexOutput
             /*&& mUseAndroidNativeBuffer2*/) {
         if (mISVBufferManager != NULL) {
-            if (OK != mISVBufferManager->useBuffer(reinterpret_cast<uint32_t>(pBuffer))) {
+            if (OK != mISVBufferManager->useBuffer(reinterpret_cast<unsigned long>(pBuffer))) {
                 ALOGE("%s: failed to register graphic buffers to ISV, set mVPPEnabled -->false", __func__);
                 mVPPEnabled = false;
             } else
@@ -555,7 +566,7 @@ OMX_ERRORTYPE ISVComponent::ISV_FreeBuffer(
             && mVPPEnabled
             && mVPPOn
             && nPortIndex == kPortIndexOutput) {
-        if (mISVBufferManager != NULL && OK != mISVBufferManager->freeBuffer(reinterpret_cast<uint32_t>(pBuffer->pBuffer)))
+        if (mISVBufferManager != NULL && OK != mISVBufferManager->freeBuffer(reinterpret_cast<unsigned long>(pBuffer->pBuffer)))
             ALOGW("%s: pBuffer %p has not been registered into ISV", __func__, pBuffer);
     }
     return err;
@@ -595,14 +606,14 @@ OMX_ERRORTYPE ISVComponent::ISV_FillThisBuffer(
         return OMX_FillThisBuffer(mComponent, pBuffer);
 
     if (mISVBufferManager != NULL) {
-        ISVBuffer* isvBuffer = mISVBufferManager->mapBuffer(reinterpret_cast<uint32_t>(pBuffer->pBuffer));
+        ISVBuffer* isvBuffer = mISVBufferManager->mapBuffer(reinterpret_cast<unsigned long>(pBuffer->pBuffer));
         if (isvBuffer == NULL) {
             ALOGE("%s: failed to map ISVBuffer, set mVPPEnabled -->false", __func__);
             mVPPEnabled = false;
             return OMX_FillThisBuffer(mComponent, pBuffer);
         }
 
-        if (OK != isvBuffer->initBufferInfo()) {
+        if (OK != isvBuffer->initBufferInfo(mHackFormat)) {
             ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: isvBuffer %p failed to initBufferInfo", __func__, isvBuffer);
             mVPPEnabled = false;
             return OMX_FillThisBuffer(mComponent, pBuffer);
@@ -647,7 +658,7 @@ OMX_ERRORTYPE ISVComponent::ISV_FillBufferDone(
         return OMX_ErrorUndefined;
     }
 
-    if(!mVPPEnabled || !mVPPOn || mVPPFlushing || mNumBypassFrames-- > 0) {
+    if(!mVPPEnabled || !mVPPOn || mVPPFlushing || pBuffer->nFilledLen == 0) {
         ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: FillBufferDone pBuffer %p, timeStamp %.2f ms", __func__, pBuffer, pBuffer->nTimeStamp/1E3);
         return mpCallBacks->FillBufferDone(&mBaseComponent, pAppData, pBuffer);
     }
@@ -845,3 +856,4 @@ OMX_ERRORTYPE ISVProcThreadObserver::releaseBuffer(PORT_INDEX index, OMX_BUFFERH
 
     return err;
 }
+

@@ -98,7 +98,6 @@ OMX_API OMX_ERRORTYPE OMX_APIENTRY OMX_Init(void)
             } else {
                 pthread_mutex_unlock(&g_module_lock);
                 ALOGW("OMX IL core not found");
-                return OMX_ErrorUndefined; // Do we need to return error message
             }
         }
         g_initialized = 1;
@@ -170,7 +169,6 @@ OMX_API OMX_ERRORTYPE OMX_APIENTRY OMX_GetHandle(
     struct list *entry;
     OMX_ERRORTYPE ret;
     OMX_HANDLETYPE tempHandle;
-
     ALOGD_IF(ISV_CORE_DEBUG, "%s: enter, try to get %s", __func__, cComponentName);
     pthread_mutex_lock(&g_module_lock);
 
@@ -202,7 +200,6 @@ OMX_API OMX_ERRORTYPE OMX_APIENTRY OMX_GetHandle(
         if(omx_res == OMX_ErrorNone) {
             pISVComponent->setComponent(static_cast<OMX_COMPONENTTYPE*>(tempHandle), &g_cores[i]);
             g_isv_components.push_back(pISVComponent);
-
             *pHandle = pISVComponent->getBaseComponent();
 
             ALOGD_IF(ISV_CORE_DEBUG, "%s: found component %s, pHandle %p", __func__, cComponentName, *pHandle);
@@ -214,7 +211,7 @@ OMX_API OMX_ERRORTYPE OMX_APIENTRY OMX_GetHandle(
 
     delete pISVComponent;
     pISVComponent = NULL;
-    ALOGE("%s(): exit failure, %s not found", __func__, cComponentName);
+    ALOGD_IF(ISV_CORE_DEBUG, "%s(): exit failure, %s not found", __func__, cComponentName);
     return OMX_ErrorInvalidComponent;
 }
 
@@ -224,7 +221,6 @@ OMX_API OMX_ERRORTYPE OMX_APIENTRY OMX_FreeHandle(
     OMX_ERRORTYPE ret;
 
     ALOGD_IF(ISV_CORE_DEBUG, "%s: enter, try to free component hanle %p", __func__, hComponent);
-
     pthread_mutex_lock(&g_module_lock);
 
     for (OMX_U32 i = 0; i < g_isv_components.size(); i++) {
@@ -304,7 +300,6 @@ OMX_API OMX_ERRORTYPE OMX_GetRolesOfComponent (
                     const_cast<OMX_STRING>(compName), &numRoles2, array);
 
             *pNumRoles = numRoles;
-
             for (OMX_U32 i = 0; i < numRoles; i++) {
                 if (i < numRoles-1)
                     roles[i+1] = roles[i] + OMX_MAX_STRINGNAME_SIZE;
@@ -328,3 +323,4 @@ OMX_API OMX_ERRORTYPE OMX_GetRolesOfComponent (
     ALOGE("%s: invalid component", __func__);
     return OMX_ErrorInvalidComponent;
 }
+

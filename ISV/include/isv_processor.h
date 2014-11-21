@@ -62,6 +62,8 @@ public:
     void stop();
     bool isReadytoRun();
 
+    //configure FRC factor
+    status_t configFRC(uint32_t fps);
     //add output buffer into mOutputBuffers
     void addOutput(OMX_BUFFERHEADERTYPE* output);
     //add intput buffer into mInputBuffers
@@ -82,6 +84,8 @@ private:
     void flush();
     //return whether this fps is valid
     inline bool isFrameRateValid(uint32_t fps);
+    //auto calculate fps if the framework doesn't set the correct fps
+    status_t calculateFps(int64_t timeStamp, uint32_t* fps);
     //config vpp filters
     status_t configFilters(OMX_BUFFERHEADERTYPE* buffer);
 
@@ -103,6 +107,8 @@ private:
     Mutex mInputLock; // to protect access to mFillBuffers
     uint32_t mInputProcIdx;
 
+    const static uint32_t WINDOW_SIZE = 4;  // must >= 2
+    Vector<int64_t>mTimeWindow;
     // conditon for thread running
     Mutex mLock;
     Condition mRunCond;
@@ -113,7 +119,6 @@ private:
 
     uint32_t mNumTaskInProcesing;
     uint32_t mNumRetry;
-    int64_t mLastTimeStamp;
     bool mError;
     bool mbFlush;
     bool mbBypass;

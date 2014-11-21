@@ -27,7 +27,7 @@
 
 using namespace android;
 
-#define MAX_RETRY_NUM   8
+#define MAX_RETRY_NUM   10
 
 ISVProcessor::ISVProcessor(bool canCallJava,
         sp<ISVBufferManager> bufferManager,
@@ -43,7 +43,6 @@ ISVProcessor::ISVProcessor(bool canCallJava,
     mInputProcIdx(0),
     mNumTaskInProcesing(0),
     mNumRetry(0),
-    mLastTimeStamp(0),
     mError(false),
     mbFlush(false),
     mbBypass(false),
@@ -73,6 +72,7 @@ ISVProcessor::ISVProcessor(bool canCallJava,
     mFilterParam.srcHeight = mFilterParam.dstHeight = height;
     mOutputBuffers.clear();
     mInputBuffers.clear();
+    mTimeWindow.clear();
 }
 
 ISVProcessor::~ISVProcessor() {
@@ -153,7 +153,11 @@ bool ISVProcessor::getBufForFirmwareOutput(Vector<ISVBuffer*> *fillBufList,uint3
     for (i = 0; i < needFillNum; i++) {
         //fetch the render buffer from the top of output buffer queue
         outputBuffer = mOutputBuffers.itemAt(i);
-        uint32_t fillHandle = reinterpret_cast<uint32_t>(outputBuffer->pBuffer);
+        if (!outputBuffer) {
+            ALOGE("%s: failed to fetch output buffer for sync.", __func__);
+            return false;
+        }
+        unsigned long fillHandle = reinterpret_cast<unsigned long>(outputBuffer->pBuffer);
         ISVBuffer* fillBuf = mBufferManager->mapBuffer(fillHandle);
         fillBufList->push_back(fillBuf);
     }
@@ -202,10 +206,15 @@ status_t ISVProcessor::updateFirmwareOutputBufStatus(uint32_t fillBufNum) {
         for(uint32_t i = 0; i < fillBufNum; i++) {
             outputBuffer = mOutputBuffers.itemAt(i);
             if (fillBufNum > 1) {
-                if(mFilterParam.frameRate == 15)
-                    outputBuffer->nTimeStamp = timeUs - 1000000ll * (fillBufNum - i - 1) / 30;
+                if (mFilterParam.frameRate == 24) {
+                    if (fillBufNum == 2) {
+                        outputBuffer->nTimeStamp = timeUs + 1000000ll * (i + 1) / 60 - 1000000ll * 1 / 24;
+                    } else if (fillBufNum == 3) {
+                        outputBuffer->nTimeStamp = timeUs + 1000000ll * (i + 3) / 60 - 1000000ll * 2 / 24;
+                    }
+                }
                 else
-                    outputBuffer->nTimeStamp = timeUs - 1000000ll * (fillBufNum - i - 1) / 60;
+                    outputBuffer->nTimeStamp = timeUs - 1000000ll * (fillBufNum - i - 1) / (mFilterParam.frameRate * 2);
             }
 
             //return filled buffers for rendering
@@ -233,6 +242,12 @@ bool ISVProcessor::getBufForFirmwareInput(Vector<ISVBuffer*> *procBufList,
     OMX_BUFFERHEADERTYPE *outputBuffer;
     OMX_BUFFERHEADERTYPE *inputBuffer;
 
+    if (mbFlush) {
+        *inputBuf = NULL;
+        *procBufNum = 0;
+        return true;
+    }
+
     int32_t procBufCount = mISVWorker->getProcBufCount();
     if ((procBufCount == 0) || (procBufCount > 4)) {
        return false;
@@ -243,14 +258,13 @@ bool ISVProcessor::getBufForFirmwareInput(Vector<ISVBuffer*> *procBufList,
         ALOGD_IF(ISV_COMPONENT_LOCK_DEBUG, "%s: acqiring mInputLock", __func__);
         Mutex::Autolock autoLock(mInputLock);
         ALOGD_IF(ISV_COMPONENT_LOCK_DEBUG, "%s: acqired mInputLock", __func__);
-        if (mbFlush) {
-            procBufCount = 1;
-            *inputBuf = NULL;
-        } else {
-            inputBuffer = mInputBuffers.itemAt(mInputProcIdx);
-            uint32_t inputHandle = reinterpret_cast<uint32_t>(inputBuffer->pBuffer);
-            *inputBuf = mBufferManager->mapBuffer(inputHandle);
+        inputBuffer = mInputBuffers.itemAt(mInputProcIdx);
+        if (!inputBuffer) {
+            ALOGE("%s: failed to get input buffer for processing.", __func__);
+            return false;
         }
+        unsigned long inputHandle = reinterpret_cast<unsigned long>(inputBuffer->pBuffer);
+        *inputBuf = mBufferManager->mapBuffer(inputHandle);
         ALOGD_IF(ISV_COMPONENT_LOCK_DEBUG, "%s: releasing mInputLock", __func__);
     }
 
@@ -259,16 +273,14 @@ bool ISVProcessor::getBufForFirmwareInput(Vector<ISVBuffer*> *procBufList,
         ALOGD_IF(ISV_COMPONENT_LOCK_DEBUG, "%s: acqiring mOutputLock", __func__);
         Mutex::Autolock autoLock(mOutputLock);
         ALOGD_IF(ISV_COMPONENT_LOCK_DEBUG, "%s: acqired mOutputLock", __func__);
-        if (mbFlush) {
-            outputBuffer = mOutputBuffers.itemAt(0);
-            uint32_t outputHandle = reinterpret_cast<uint32_t>(outputBuffer->pBuffer);
-            procBufList->push_back(mBufferManager->mapBuffer(outputHandle));
-        } else {
-            for (int32_t i = 0; i < procBufCount; i++) {
-                outputBuffer = mOutputBuffers.itemAt(mOutputProcIdx + i);
-                uint32_t outputHandle = reinterpret_cast<uint32_t>(outputBuffer->pBuffer);
-                procBufList->push_back(mBufferManager->mapBuffer(outputHandle));
+        for (int32_t i = 0; i < procBufCount; i++) {
+            outputBuffer = mOutputBuffers.itemAt(mOutputProcIdx + i);
+            if (!outputBuffer) {
+                ALOGE("%s: failed to get output buffer for processing.", __func__);
+                return false;
             }
+            unsigned long outputHandle = reinterpret_cast<unsigned long>(outputBuffer->pBuffer);
+            procBufList->push_back(mBufferManager->mapBuffer(outputHandle));
         }
         *procBufNum = procBufCount;
         ALOGD_IF(ISV_COMPONENT_LOCK_DEBUG, "%s: releasing mOutputLock", __func__);
@@ -306,7 +318,7 @@ bool ISVProcessor::isReadytoRun()
 {
     ALOGD_IF(ISV_THREAD_DEBUG, "%s: mISVWorker->getProcBufCount() return %d", __func__,
             mISVWorker->getProcBufCount());
-    if (mInputProcIdx < mInputBuffers.size()
+    if (mInputProcIdx < mInputBuffers.size() 
             && (mOutputBuffers.size() - mOutputProcIdx) >= mISVWorker->getProcBufCount())
        return true;
     else
@@ -335,22 +347,22 @@ bool ISVProcessor::threadLoop() {
             if (!mbFlush)
                 flags = mInputBuffers[mInputProcIdx]->nFlags;
             status_t ret = mISVWorker->process(inputBuf, procBufList, procBufNum, mbFlush, flags);
-            // for seek and EOS
-            if (mbFlush) {
-                mISVWorker->reset();
-                flush();
-
-                mNumTaskInProcesing = 0;
-                mInputProcIdx = 0;
-                mOutputProcIdx = 0;
-
-                mbFlush = false;
-
-                Mutex::Autolock endLock(mEndLock);
-                mEndCond.signal();
-                return true;
-            }
             if (ret == STATUS_OK) {
+                // for seek and EOS
+                if (mbFlush) {
+                    mISVWorker->reset();
+                    flush();
+
+                    mNumTaskInProcesing = 0;
+                    mInputProcIdx = 0;
+                    mOutputProcIdx = 0;
+
+                    mbFlush = false;
+
+                    Mutex::Autolock endLock(mEndLock);
+                    mEndCond.signal();
+                    return true;
+                }
                 mNumTaskInProcesing++;
                 updateFirmwareInputBufStatus(procBufNum);
             } else {
@@ -393,29 +405,56 @@ inline bool ISVProcessor::isFrameRateValid(uint32_t fps)
     return (fps == 15 || fps == 24 || fps == 25 || fps == 30 || fps == 50 || fps == 60) ? true : false;
 }
 
+status_t ISVProcessor::configFRC(uint32_t fps)
+{
+    if (isFrameRateValid(fps)) {
+        if (fps == 50 || fps == 60) {
+            ALOGD_IF(ISV_THREAD_DEBUG, "%s: %d fps don't need do FRC, so disable FRC", __func__, fps);
+            mFilters &= ~FilterFrameRateConversion;
+            mFilterParam.frcRate = FRC_RATE_1X;
+        } else {
+            mFilterParam.frameRate = fps;
+            mFilterParam.frcRate = mISVProfile->getFRCRate(mFilterParam.frameRate);
+            ALOGD_IF(ISV_THREAD_DEBUG, "%s: fps is set to %d, frc rate is %d", __func__,
+                    mFilterParam.frameRate, mFilterParam.frcRate);
+        }
+        return OK;
+    }
+
+    return UNKNOWN_ERROR;
+}
+
+status_t ISVProcessor::calculateFps(int64_t timeStamp, uint32_t* fps)
+{
+    int32_t i = 0;
+    *fps = 0;
+
+    mTimeWindow.push_back(timeStamp);
+    if (mTimeWindow.size() > WINDOW_SIZE) {
+        mTimeWindow.removeAt(0);
+    }
+    else if (mTimeWindow.size() < WINDOW_SIZE)
+        return NOT_ENOUGH_DATA;
+
+    int64_t delta = mTimeWindow[WINDOW_SIZE-1] - mTimeWindow[0];
+    if (delta == 0)
+        return NOT_ENOUGH_DATA;
+
+    *fps = ceil(1.0 / delta * 1E6 * (WINDOW_SIZE-1));
+    return OK;
+}
+
 status_t ISVProcessor::configFilters(OMX_BUFFERHEADERTYPE* buffer)
 {
     if ((mFilters & FilterFrameRateConversion) != 0) {
         if (!isFrameRateValid(mFilterParam.frameRate)) {
             if (mNumRetry++ < MAX_RETRY_NUM) {
-                int64_t deltaTime = buffer->nTimeStamp - mLastTimeStamp;
-                mLastTimeStamp = buffer->nTimeStamp;
-                if (deltaTime != 0)
-                    mFilterParam.frameRate = ceil(1.0 / deltaTime * 1E6);
-                if (!isFrameRateValid(mFilterParam.frameRate)) {
+                uint32_t fps = 0;
+                if (OK != calculateFps(buffer->nTimeStamp, &fps))
                     return NOT_ENOUGH_DATA;
-                } else {
-                    if (mFilterParam.frameRate == 50 || mFilterParam.frameRate == 60) {
-                        ALOGD_IF(ISV_THREAD_DEBUG, "%s: %d fps don't need do FRC, so disable FRC", __func__,
-                                mFilterParam.frameRate);
-                        mFilters &= ~FilterFrameRateConversion;
-                        mFilterParam.frcRate = FRC_RATE_1X;
-                    } else {
-                        mFilterParam.frcRate = mISVProfile->getFRCRate(mFilterParam.frameRate);
-                        ALOGD_IF(ISV_THREAD_DEBUG, "%s: calculate fps is %d, frc rate is %d", __func__,
-                                mFilterParam.frameRate, mFilterParam.frcRate);
-                    }
-                }
+
+                if (OK != configFRC(fps))
+                    return NOT_ENOUGH_DATA;
             } else {
                 ALOGD_IF(ISV_THREAD_DEBUG, "%s: exceed max retry to get a valid frame rate(%d), disable FRC", __func__,
                         mFilterParam.frameRate);
