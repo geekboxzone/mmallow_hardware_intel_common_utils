@@ -355,7 +355,7 @@ int32_t ISVProfile::getGlobalStatus()
     FILE *setting_handle, *config_handle;
 
     snprintf(path, 80, "/data/user/%d/com.intel.vpp/shared_prefs/vpp_settings.xml", userId);
-    ALOGI("%s: %s",__func__, path);
+    ALOGV("%s: %s",__func__, path);
     setting_handle = fopen(path, "r");
     if(setting_handle == NULL) {
         ALOGE("%s: failed to open file %s\n", __func__, path);
@@ -381,7 +381,7 @@ int32_t ISVProfile::getGlobalStatus()
         if (strstr(xml_buf, "name=\"DefaultFRCStatus\" value=\"1\"") != NULL)
             status |= VPP_FRC_ON;
 
-        ALOGI("%s: using the default status: VPP=%d, FRC=%d\n", __func__,
+        ALOGV("%s: using the default status: VPP=%d, FRC=%d\n", __func__,
             ((status & VPP_COMMON_ON) == 0) ? 0 : 1,
             ((status & VPP_FRC_ON) == 0) ? 0: 1);
 
@@ -433,27 +433,27 @@ void ISVProfile::dumpConfigData()
         "FRC_RATE_4X",
     };
 
-    ALOGI("========== VPP filter configs:==========\n");
+    ALOGV("========== VPP filter configs:==========\n");
     for (i = 1; i < ProcFilterCount; i++) {
-        ALOGI("name=%s, enabled=%s, minResolution=%d, maxResolution=%d, isOn=%s\n",
+        ALOGV("name=%s, enabled=%s, minResolution=%d, maxResolution=%d, isOn=%s\n",
             filterNames[i],
             (mConfigs[i].enabled == true) ? "true" : "false",
             mConfigs[i].minResolution,
             mConfigs[i].maxResolution,
             ((mStatus & (1 << i)) == 0) ? "false" : "true");
         if (mConfigs[i].paraSize) {
-            ALOGI("\t\t parameters: ");
+            ALOGV("\t\t parameters: ");
             for(j = 0; j < mConfigs[i].paraSize; j++)
                 ALOGE("%s=%f,", mConfigs[i].paraTables[j].name, mConfigs[i].paraTables[j].value);
-            ALOGI("\n");
+            ALOGV("\n");
         }
     }
 
-    ALOGI("========== FRC rate configs:===========\n");
+    ALOGV("========== FRC rate configs:===========\n");
     for (i = 0; i < MAX_TAB_SIZE; i++) {
         if (mFrcRates[i].input_fps == 0)
             break;
-        ALOGI("input_fps=%d, rate=%s\n", mFrcRates[i].input_fps, rateNames[mFrcRates[i].rate]);
+        ALOGV("input_fps=%d, rate=%s\n", mFrcRates[i].input_fps, rateNames[mFrcRates[i].rate]);
     }
 
     ALOGI("========== common parameter configs:===========\n");

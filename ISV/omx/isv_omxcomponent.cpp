@@ -254,8 +254,9 @@ OMX_ERRORTYPE ISVComponent::ISV_GetParameter(
         if (nParamIndex == OMX_IndexParamPortDefinition
                 && def->nPortIndex == kPortIndexOutput) {
             ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: orignal bufferCountActual %d, bufferCountMin %d",  __func__, def->nBufferCountActual, def->nBufferCountMin);
-            def->nBufferCountActual += mNumISVBuffers;
-            def->nBufferCountMin += mNumISVBuffers;
+            //FIXME workaround avc low resolution playback
+            def->nBufferCountActual += mNumISVBuffers + 9;
+            def->nBufferCountMin += mNumISVBuffers + 9;
 #ifndef TARGET_VPP_USE_GEN
             //FIXME: THIS IS A HACK!! Request NV12 buffer for YV12 format
             //because VSP only support NV12 output
