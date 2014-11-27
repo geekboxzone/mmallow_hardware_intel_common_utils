@@ -415,6 +415,18 @@ OMX_ERRORTYPE ISVComponent::ISV_SetConfig(
 {
     ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: nIndex 0x%08x", __func__, nIndex);
 
+    if (nIndex == static_cast<OMX_INDEXTYPE>(OMX_IndexConfigAutoFramerateConversion)) {
+        OMX_CONFIG_BOOLEANTYPE *config = static_cast<OMX_CONFIG_BOOLEANTYPE*>(pComponentConfigStructure);
+        if (config->bEnabled) {
+            mVPPEnabled = true;
+            ALOGI("%s: mVPPEnabled=true", __func__);
+        } else {
+            mVPPEnabled = false;
+            ALOGI("%s: mVPPEnabled=false", __func__);
+        }
+        return OMX_ErrorNone;
+    }
+
     return OMX_SetConfig(mComponent, nIndex, pComponentConfigStructure);
 }
 
