@@ -254,16 +254,18 @@ OMX_ERRORTYPE ISVComponent::ISV_GetParameter(
         if (nParamIndex == OMX_IndexParamPortDefinition
                 && def->nPortIndex == kPortIndexOutput) {
             ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: orignal bufferCountActual %d, bufferCountMin %d",  __func__, def->nBufferCountActual, def->nBufferCountMin);
-            //FIXME workaround avc low resolution playback
-            def->nBufferCountActual += mNumISVBuffers + 9;
-            def->nBufferCountMin += mNumISVBuffers + 9;
 #ifndef TARGET_VPP_USE_GEN
             //FIXME: THIS IS A HACK!! Request NV12 buffer for YV12 format
             //because VSP only support NV12 output
             OMX_VIDEO_PORTDEFINITIONTYPE *video_def = &def->format.video;
             if (video_def->eColorFormat == VA_FOURCC_YV12) {
-                mHackFormat = HAL_PIXEL_FORMAT_YV12;
-                video_def->eColorFormat = (OMX_COLOR_FORMATTYPE)HAL_PIXEL_FORMAT_NV12_VED;
+                //FIXME workaround Disable ISV for YV12 input
+                mVPPEnabled = false;
+                ALOGI("%s: Disable ISV for YV12 input. mVPPEnabled %d", __func__, mVPPEnabled);
+            } else {
+                //FIXME workaround avc low resolution playback
+                def->nBufferCountActual += mNumISVBuffers + 9;
+                def->nBufferCountMin += mNumISVBuffers + 9;
             }
 #endif
         }
