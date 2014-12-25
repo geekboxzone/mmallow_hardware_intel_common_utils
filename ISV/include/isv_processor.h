@@ -40,6 +40,7 @@ class ISVProcessorObserver: public RefBase
 {
 public:
     virtual OMX_ERRORTYPE releaseBuffer(PORT_INDEX index, OMX_BUFFERHEADERTYPE* pBuffer, bool bFlush) = 0;
+    virtual OMX_ERRORTYPE reportOutputCrop() = 0;
 };
 
 class ISVProcessor : public Thread

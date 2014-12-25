@@ -28,6 +28,10 @@
 
 using namespace android;
 
+#define GRALLOC_SUB_BUFFER_MAX  3
+#define RANDOM_BUFFER_SIZE      200
+static char random_buf[RANDOM_BUFFER_SIZE];
+
 ISVBuffer::~ISVBuffer() {
     if (mWorker != NULL) {
         ALOGV("%s: mSurface %d", __func__, mSurface);
@@ -62,18 +66,19 @@ status_t ISVBuffer::initBufferInfo(uint32_t hackFormat)
         mGrallocHandle = mBuffer;
     }
 
+    int32_t err = 0;
+    if (!mpGralloc) {
+        err = hw_get_module(GRALLOC_HARDWARE_MODULE_ID, (hw_module_t const**)&mpGralloc);
+        if (0 != err)
+            return UNKNOWN_ERROR;
+    }
 #ifdef TARGET_VPP_USE_GEN
-    gralloc_module_t* pGralloc = NULL;
     ufo_buffer_details_t info;
 
     memset(&info, 0, sizeof(ufo_buffer_details_t));
-    int err = hw_get_module(GRALLOC_HARDWARE_MODULE_ID, (hw_module_t const**)&pGralloc);
-    if (!pGralloc) err = -1;
-    if (0 == err)
-        err = pGralloc->perform(pGralloc, INTEL_UFO_GRALLOC_MODULE_PERFORM_GET_BO_INFO, mGrallocHandle, &info);
+    err = mpGralloc->perform(mpGralloc, INTEL_UFO_GRALLOC_MODULE_PERFORM_GET_BO_INFO, mGrallocHandle, &info);
 
-    if (0 != err)
-    {
+    if (0 != err) {
         ALOGE("%s: can't get graphic buffer info", __func__);
     }
     mWidth = info.width;
@@ -83,6 +88,7 @@ status_t ISVBuffer::initBufferInfo(uint32_t hackFormat)
 #else
     IMG_native_handle_t* grallocHandle = (IMG_native_handle_t*)mGrallocHandle;
     mStride = grallocHandle->iWidth;
+    mSurfaceHeight = grallocHandle->iHeight;
     mColorFormat = (hackFormat != 0) ? hackFormat : grallocHandle->iFormat;
 #endif
     if (mWorker == NULL) {
@@ -97,6 +103,43 @@ status_t ISVBuffer::initBufferInfo(uint32_t hackFormat)
 
     ALOGD_IF(ISV_BUFFER_MANAGER_DEBUG, "%s: mWidth %d, mHeight %d, mStride %d, mColorFormat %d, mGrallocHandle %p, mSurface %d",
             __func__, mWidth, mHeight, mStride, mColorFormat, mGrallocHandle, mSurface);
+    return OK;
+}
+
+status_t ISVBuffer::clearIfNeed()
+{
+#ifndef TARGET_VPP_USE_GEN
+    static bool bRandomBufferInit = false;
+    if (!bRandomBufferInit) {
+        time_t my_time;
+        srand((unsigned)time(&my_time));
+        for (int32_t i = 0; i < RANDOM_BUFFER_SIZE; i++)
+            random_buf[i] = (char)(((double)rand()/(double)RAND_MAX) * 255.0);
+        bRandomBufferInit = true;
+    }
+
+    if ((mFlags & ISV_BUFFER_NEED_CLEAR) && mpGralloc) {
+        int32_t usage = GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN;
+        void *vaddr[GRALLOC_SUB_BUFFER_MAX];
+
+        int32_t err = mpGralloc->lock(mpGralloc, (buffer_handle_t)mGrallocHandle, usage, 0, 0, mStride, mSurfaceHeight, &vaddr[0]);
+
+        if (0 != err) {
+            ALOGE("%s: get graphic buffer ptr failed", __func__);
+            return UNKNOWN_ERROR;
+        }
+
+        int32_t buffer_size = mStride * mSurfaceHeight * 3 / 2;
+        char* ptr = (char*)vaddr[0];
+        for (int32_t i = 0; i < buffer_size/RANDOM_BUFFER_SIZE; i++) {
+            memcpy(ptr, random_buf, sizeof(random_buf));
+            ptr += sizeof(random_buf);
+        }
+        mpGralloc->unlock(mpGralloc, (buffer_handle_t)mGrallocHandle);
+        ALOGD_IF(ISV_BUFFER_MANAGER_DEBUG, "%s: clear isv buffer %p finished, buffer size %d", __func__, this, buffer_size);
+        mFlags &= ~ISV_BUFFER_NEED_CLEAR;
+    }
+#endif
     return OK;
 }
 
@@ -146,7 +189,9 @@ status_t ISVBufferManager::useBuffer(unsigned long handle)
         }
     }
 
-    ISVBuffer* isvBuffer = new ISVBuffer(mWorker, handle, mMetaDataMode ? ISVBuffer::ISV_BUFFER_METADATA : ISVBuffer::ISV_BUFFER_GRALLOC);
+    ISVBuffer* isvBuffer = new ISVBuffer(mWorker, handle,
+                                         mMetaDataMode ? ISVBuffer::ISV_BUFFER_METADATA : ISVBuffer::ISV_BUFFER_GRALLOC,
+                                         mNeedClearBuffers ? ISVBuffer::ISV_BUFFER_NEED_CLEAR : 0);
 
     ALOGD_IF(ISV_BUFFER_MANAGER_DEBUG, "%s: add handle 0x%08x, and then mBuffers.size() %d", __func__,
             handle, mBuffers.size());
@@ -173,7 +218,8 @@ status_t ISVBufferManager::useBuffer(const sp<ANativeWindowBuffer> nativeBuffer)
             (unsigned long)nativeBuffer->handle, (unsigned long)nativeBuffer->handle,
             nativeBuffer->width, nativeBuffer->height,
             nativeBuffer->stride, nativeBuffer->format,
-            mMetaDataMode ? ISVBuffer::ISV_BUFFER_METADATA : ISVBuffer::ISV_BUFFER_GRALLOC);
+            mMetaDataMode ? ISVBuffer::ISV_BUFFER_METADATA : ISVBuffer::ISV_BUFFER_GRALLOC,
+            mNeedClearBuffers ? ISVBuffer::ISV_BUFFER_NEED_CLEAR : 0);
 
     ALOGD_IF(ISV_BUFFER_MANAGER_DEBUG, "%s: add handle 0x%08x, and then mBuffers.size() %d", __func__,
             nativeBuffer->handle, mBuffers.size());
@@ -192,3 +238,19 @@ ISVBuffer* ISVBufferManager::mapBuffer(unsigned long handle)
     return NULL;
 }
 
+status_t ISVBufferManager::setBuffersFlag(uint32_t flag)
+{
+    Mutex::Autolock autoLock(mBufferLock);
+
+    if (flag & ISVBuffer::ISV_BUFFER_NEED_CLEAR) {
+        if (mBuffers.size() == 0)
+            mNeedClearBuffers = true;
+        else {
+            for (uint32_t i = 0; i < mBuffers.size(); i++) {
+                ISVBuffer* isvBuffer = mBuffers.itemAt(i);
+                isvBuffer->setFlag(ISVBuffer::ISV_BUFFER_NEED_CLEAR);
+            }
+        }
+    }
+    return OK;
+}

@@ -23,6 +23,9 @@
 #include <utils/Errors.h>
 #include <utils/Vector.h>
 #include "isv_worker.h"
+#ifndef TARGET_VPP_USE_GEN
+#include "hal_public.h"
+#endif
 
 using namespace android;
 
@@ -37,6 +40,11 @@ public:
         ISV_BUFFER_GRALLOC,
         ISV_BUFFER_METADATA,
     } ISV_BUFFERTYPE;
+
+    typedef enum {
+        ISV_BUFFER_NEED_CLEAR       = 0x00000001,
+        ISV_BUFFER_CROP_CHANGED     = 0x00000002,
+    } ISV_BUFFERFLAG;
 private:
     //FIX ME: copy from ufo gralloc.h
     typedef struct _ufo_buffer_details_t
@@ -66,29 +74,36 @@ public:
             unsigned long buffer, unsigned long grallocHandle,
             uint32_t width, uint32_t height,
             uint32_t stride, uint32_t colorFormat,
-            ISV_BUFFERTYPE type)
+            ISV_BUFFERTYPE type, uint32_t flag)
         :mWorker(worker),
         mBuffer(buffer),
         mGrallocHandle(grallocHandle),
         mWidth(width),
         mHeight(height),
+        mSurfaceHeight(0),
         mStride(stride),
         mColorFormat(colorFormat),
         mType(type),
-        mSurface(-1) {}
+        mSurface(-1),
+        mFlags(flag),
+        mpGralloc(NULL) {}
 
     ISVBuffer(sp<ISVWorker> worker,
             unsigned long buffer,
-            ISV_BUFFERTYPE type)
+            ISV_BUFFERTYPE type,
+            uint32_t flag)
         :mWorker(worker),
         mBuffer(buffer),
         mGrallocHandle(0),
         mWidth(0),
         mHeight(0),
+        mSurfaceHeight(0),
         mStride(0),
         mColorFormat(0),
         mType(type),
-        mSurface(-1) {}
+        mSurface(-1),
+        mFlags(flag),
+        mpGralloc(NULL) {}
 
     ~ISVBuffer();
 
@@ -100,17 +115,26 @@ public:
     int32_t getSurface() { return mSurface; }
     // get buffer handle
     unsigned long getHandle() { return mBuffer; }
+    // set/clear/get flag
+    uint32_t getFlags() { return mFlags; }
+    void setFlag(uint32_t flag) { mFlags |= flag; return; }
+    void unsetFlag(uint32_t flag) { mFlags &= ~flag; return; }
+    status_t clearIfNeed();
 
 private:
+
     sp<ISVWorker> mWorker;
     unsigned long mBuffer;
     unsigned long mGrallocHandle;
     uint32_t mWidth;
     uint32_t mHeight;
+    uint32_t mSurfaceHeight;
     uint32_t mStride;
     uint32_t mColorFormat;
     ISV_BUFFERTYPE mType;
     int32_t mSurface;
+    uint32_t mFlags;
+    gralloc_module_t* mpGralloc;
 };
 
 class ISVBufferManager: public RefBase
@@ -118,7 +142,8 @@ class ISVBufferManager: public RefBase
 public:
     ISVBufferManager()
         :mWorker(NULL),
-        mMetaDataMode(false) {}
+        mMetaDataMode(false),
+        mNeedClearBuffers(false) {}
 
     ~ISVBufferManager() {}
     // set mBuffers size
@@ -134,6 +159,8 @@ public:
     // set isv worker
     void setWorker(sp<ISVWorker> worker) { mWorker = worker; }
     void setMetaDataMode(bool metaDataMode) { mMetaDataMode = metaDataMode; }
+    // set buffer flag.
+    status_t setBuffersFlag(uint32_t flag);
 private:
     typedef enum {
         GRALLOC_BUFFER_MODE = 0,
@@ -145,6 +172,7 @@ private:
     // VPP buffer queue
     Vector<ISVBuffer*> mBuffers;
     Mutex mBufferLock; // to protect access to mBuffers
+    bool mNeedClearBuffers;
 };
 
 

@@ -47,14 +47,16 @@ class ISVComponent;
 class ISVProcThreadObserver: public ISVProcessorObserver
 {
 public:
-    ISVProcThreadObserver(OMX_COMPONENTTYPE *pBaseComponent, OMX_COMPONENTTYPE *pComponent, OMX_CALLBACKTYPE *pCallBacks);
+    ISVProcThreadObserver(OMX_COMPONENTTYPE *pBaseComponent, OMX_COMPONENTTYPE *pComponent, OMX_CALLBACKTYPE *pCallBacks, sp<ISVBufferManager> bufferManager);
     ~ISVProcThreadObserver();
 
     virtual OMX_ERRORTYPE releaseBuffer(PORT_INDEX index, OMX_BUFFERHEADERTYPE* pBuffer, bool flush);
+    virtual OMX_ERRORTYPE reportOutputCrop();
 private:
     OMX_COMPONENTTYPE *mBaseComponent;
     OMX_COMPONENTTYPE *mComponent;
     OMX_CALLBACKTYPE *mpCallBacks;
+    sp<ISVBufferManager> mISVBufferManager;
 };
 
 class ISVComponent //: public RefBase
@@ -282,6 +284,7 @@ private:
     bool mVPPEnabled;
     bool mVPPOn;
     bool mVPPFlushing;
+    bool mOutputCropChanged;
     bool mInitialized;
 #ifdef TARGET_VPP_USE_GEN
     // vpp thread

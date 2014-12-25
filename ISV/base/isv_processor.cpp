@@ -172,6 +172,7 @@ status_t ISVProcessor::updateFirmwareOutputBufStatus(uint32_t fillBufNum) {
     OMX_BUFFERHEADERTYPE *outputBuffer;
     OMX_BUFFERHEADERTYPE *inputBuffer;
     OMX_ERRORTYPE err;
+    bool cropChanged = false;
 
     if (mInputBuffers.empty()) {
         ALOGE("%s: input buffer queue is empty. no buffer need to be sync", __func__);
@@ -186,6 +187,20 @@ status_t ISVProcessor::updateFirmwareOutputBufStatus(uint32_t fillBufNum) {
     {
         Mutex::Autolock autoLock(mInputLock);
         inputBuffer = mInputBuffers.itemAt(0);
+        unsigned long inputHandle = reinterpret_cast<unsigned long>(inputBuffer->pBuffer);
+        ISVBuffer* inputBuf = mBufferManager->mapBuffer(inputHandle);
+        uint32_t flags = inputBuf->getFlags();
+
+        if (flags & ISVBuffer::ISV_BUFFER_CROP_CHANGED) {
+            err = mpOwner->reportOutputCrop();
+            if (err != OMX_ErrorNone) {
+                ALOGE("%s: failed to reportOutputCrop", __func__);
+                return UNKNOWN_ERROR;
+            }
+            cropChanged = true;
+            inputBuf->unsetFlag(ISVBuffer::ISV_BUFFER_CROP_CHANGED);
+        }
+
         err = mpOwner->releaseBuffer(kPortIndexInput, inputBuffer, false);
         if (err != OMX_ErrorNone) {
             ALOGE("%s: failed to fillInputBuffer", __func__);
@@ -218,7 +233,9 @@ status_t ISVProcessor::updateFirmwareOutputBufStatus(uint32_t fillBufNum) {
             }
 
             //return filled buffers for rendering
-            err = mpOwner->releaseBuffer(kPortIndexOutput, outputBuffer, false);
+            //skip rendering for crop change
+            err = mpOwner->releaseBuffer(kPortIndexOutput, outputBuffer, cropChanged);
+
             if (err != OMX_ErrorNone) {
                 ALOGE("%s: failed to releaseOutputBuffer", __func__);
                 return UNKNOWN_ERROR;
