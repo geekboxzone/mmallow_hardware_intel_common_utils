@@ -15,6 +15,8 @@
  *
  */
 
+#include <inttypes.h>
+
 #include <OMX_Core.h>
 #include <OMX_Component.h>
 #include <dlfcn.h>
@@ -93,7 +95,9 @@ OMX_API OMX_ERRORTYPE OMX_APIENTRY OMX_Init(void)
                     }
                     g_cores[i].mNumComponents = tmpIndex;
                     g_nr_comp += g_cores[i].mNumComponents;
-                    ALOGD_IF(ISV_CORE_DEBUG, "OMX IL core: contains %ld components", g_cores[i].mNumComponents);
+                    ALOGD_IF(ISV_CORE_DEBUG,
+                             "OMX IL core: contains %" PRIu32 " components",
+                             g_cores[i].mNumComponents);
                 }
             } else {
                 pthread_mutex_unlock(&g_module_lock);
@@ -151,7 +155,8 @@ OMX_API OMX_ERRORTYPE OMX_APIENTRY OMX_ComponentNameEnum(
         }
         if (relativeIndex < g_cores[i].mNumComponents) {
             pthread_mutex_unlock(&g_module_lock);
-            ALOGD_IF(ISV_CORE_DEBUG, "%s: found %luth component %s", __func__, nIndex, cComponentName);
+            ALOGD_IF(ISV_CORE_DEBUG, "%s: found %" PRIu32 "th component %s",
+                     __func__, nIndex, cComponentName);
             return ((*(g_cores[i].mComponentNameEnum))(cComponentName, nNameLength, relativeIndex));
         } else relativeIndex -= g_cores[i].mNumComponents;
     }

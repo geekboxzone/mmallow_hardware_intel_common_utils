@@ -15,6 +15,7 @@
  *
  */
 
+#include <inttypes.h>
 
 #include <OMX_Component.h>
 #include "isv_omxcomponent.h"
@@ -775,7 +776,9 @@ OMX_ERRORTYPE ISVComponent::ISV_EventHandler(
 
         default:
         {
-            ALOGD_IF(ISV_COMPONENT_DEBUG, "%s: EVENT(%d, %ld, %ld)", __func__, eEvent, nData1, nData2);
+            ALOGD_IF(
+                ISV_COMPONENT_DEBUG, "%s: EVENT(%d, %" PRId32 ", %" PRId32 ")",
+                __func__, eEvent, nData1, nData2);
             break;
         }
     }
