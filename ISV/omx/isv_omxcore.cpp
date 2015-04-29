@@ -210,6 +210,11 @@ OMX_API OMX_ERRORTYPE OMX_APIENTRY OMX_GetHandle(
             ALOGD_IF(ISV_CORE_DEBUG, "%s: found component %s, pHandle %p", __func__, cComponentName, *pHandle);
             pthread_mutex_unlock(&g_module_lock);
             return OMX_ErrorNone;
+        } else if(omx_res == OMX_ErrorInsufficientResources) {
+            pthread_mutex_unlock(&g_module_lock);
+            delete pISVComponent;
+            pISVComponent = NULL;
+            return OMX_ErrorInsufficientResources;
         }
     }
     pthread_mutex_unlock(&g_module_lock);
