@@ -238,6 +238,7 @@ OMX_ERRORTYPE MRM_OMX_Adaptor::MRM_OMX_RemoveComponent(
                                                   codecInfo.isSecured,
                                                   codecInfo.resolution,
                                                   codecInfo.frameRate);
+    mComponentInfoMap.removeItem(pComponentHandle);
     return err;
 }
 
